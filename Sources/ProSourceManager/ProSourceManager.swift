@@ -23,7 +23,7 @@ public enum ProSourceManager {
 
         await withTaskGroup(of: Void.self) { group in
             for url in urls {
-                group.addTask {
+                group.addTask(priority: .background) {
                     await fetchAndPrintSingle(url: url)
                 }
             }
@@ -54,7 +54,7 @@ public enum ProSourceManager {
 
         await withTaskGroup(of: (Int, URL, Result<String, Error>).self) { group in
             for (idx, url) in urls.enumerated() {
-                group.addTask {
+                group.addTask(priority: .background) {
                     let res = await fetchSingleReturningString(url: url)
                     return (idx, url, res)
                 }
@@ -86,7 +86,10 @@ public enum ProSourceManager {
     /// - Parameter url: URL to fetch.
     private static func fetchAndPrintSingle(url: URL) async {
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 10.0  // 10 seconds timeout
+
+            let (data, response) = try await URLSession.shared.data(for: request)
 
             // If HTTP response, validate status code
             if let http = response as? HTTPURLResponse {
@@ -134,7 +137,10 @@ public enum ProSourceManager {
     /// - Returns: `.success(prettyJSONString)` or `.failure(Error)`
     private static func fetchSingleReturningString(url: URL) async -> Result<String, Error> {
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 10.0  // 10 seconds timeout
+
+            let (data, response) = try await URLSession.shared.data(for: request)
 
             if let http = response as? HTTPURLResponse {
                 guard (200...299).contains(http.statusCode) else {
