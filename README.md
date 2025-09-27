@@ -1,10 +1,8 @@
-# ProSourceManager
+# ProStoreTools
 
-A Swift Package for combining and managing iOS sideloading sources.
+A Swift Package with many tools for ProStore and ProSign.
 
 ## Features
-- Download multiple AltStore sources
-- Merge them into a single unified JSON
-- Sort and organise sources for easy use
-- Generate both human-readable and machine-readable formats
-- Fully Swift Package Manager compatible
+- Sign .ipa files with zhlynn and khcrysalis' `zsign` IPA signer!
+- Extract the name of the certificate in a signed IPA file!
+- And much more!
