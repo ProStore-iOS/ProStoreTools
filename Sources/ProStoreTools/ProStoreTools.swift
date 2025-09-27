@@ -2,13 +2,33 @@ import Foundation
 import ZIPFoundation
 import ZsignSwift
 
-class SigningManager {
-    static func sign(
+public enum ProStoreTools {
+    public static func sign(
         ipaURL: URL,
         p12URL: URL,
         provURL: URL,
         p12Password: String,
         progressUpdate: @escaping (String) -> Void = { _ in },
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) {
+        SigningManager.sign(
+            ipaURL: ipaURL,
+            p12URL: p12URL,
+            provURL: provURL,
+            p12Password: p12Password,
+            progressUpdate: progressUpdate,
+            completion: completion
+        )
+    }
+}
+
+fileprivate class SigningManager {
+    static func sign(
+        ipaURL: URL,
+        p12URL: URL,
+        provURL: URL,
+        p12Password: String,
+        progressUpdate: @escaping (String) -> Void,
         completion: @escaping (Result<URL, Error>) -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async {
