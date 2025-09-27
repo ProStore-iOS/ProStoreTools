@@ -2,20 +2,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "ProSourceManager",
+    name: "ProStoreTools",
     platforms: [
-        .iOS(.v15)
+        .iOS(.v16)
     ],
     products: [
         .library(
-            name: "ProSourceManager",
-            targets: ["ProSourceManager"]
+            name: "ProStoreTools",
+            targets: ["ProStoreTools"]
         ),
     ],
     targets: [
         .target(
-            name: "ProSourceManager",
-            path: "Sources/ProSourceManager"
+            name: "ProStoreTools",
+            path: "Sources/ProStoreTools"
         ),
     ]
 )
