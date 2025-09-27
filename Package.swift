@@ -21,7 +21,7 @@ let package = Package(
             name: "ProStoreTools",
             dependencies: [
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
-                .product(name: "ZsignSwift", package: "ZsignPackage"),
+                .product(name: "ZsignSwift", package: "Zsign-Package"),
             ],
             path: "Sources/ProStoreTools"
         ),
