@@ -34,9 +34,10 @@ fileprivate class SigningManager {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 progressUpdate("Preparing files 📂")
-
                 let (tmpRoot, inputsDir, workDir) = try prepareTemporaryWorkspace()
-                defer { cleanupTemporaryFiles(at: tmpRoot) }
+                defer {
+                    cleanupTemporaryFiles(at: tmpRoot)
+                }
 
                 let (localIPA, localP12, localProv) = try copyInputFiles(
                     ipaURL: ipaURL,
@@ -46,13 +47,12 @@ fileprivate class SigningManager {
                 )
 
                 progressUpdate("Unzipping IPA 🔓")
-                try extractIPA(ipaURL: localIPA, to: workDir)
+                try extractIPA(ipaURL: localIPA, to: workDir, progressUpdate: progressUpdate)
 
                 let payloadDir = workDir.appendingPathComponent("Payload")
                 let appDir = try findAppBundle(in: payloadDir)
 
                 progressUpdate("Signing \(appDir.lastPathComponent) ✍️")
-
                 let sema = DispatchSemaphore(value: 0)
                 var signingError: Error?
 
@@ -68,19 +68,21 @@ fileprivate class SigningManager {
                     signingError = error
                     sema.signal()
                 }
-
                 sema.wait()
-                if let error = signingError { throw error }
+
+                if let error = signingError {
+                    throw error
+                }
 
                 progressUpdate("Zipping signed IPA 📦")
                 let signedIPAURL = try createSignedIPA(
                     from: workDir,
                     originalIPAURL: ipaURL,
-                    outputDir: tmpRoot
+                    outputDir: tmpRoot,
+                    progressUpdate: progressUpdate
                 )
 
                 completion(.success(signedIPAURL))
-
             } catch {
                 completion(.failure(error))
             }
@@ -99,30 +101,44 @@ fileprivate class SigningManager {
         return (tmpRoot, inputs, work)
     }
 
-    static func copyInputFiles(ipaURL: URL, p12URL: URL, provURL: URL, to inputsDir: URL) throws -> (URL, URL, URL) {
+    static func copyInputFiles(
+        ipaURL: URL,
+        p12URL: URL,
+        provURL: URL,
+        to inputsDir: URL
+    ) throws -> (URL, URL, URL) {
         let fm = FileManager.default
-
         let localIPA = inputsDir.appendingPathComponent(ipaURL.lastPathComponent)
         let localP12 = inputsDir.appendingPathComponent(p12URL.lastPathComponent)
         let localProv = inputsDir.appendingPathComponent(provURL.lastPathComponent)
 
-        [localIPA, localP12, localProv].forEach {
-            if fm.fileExists(atPath: $0.path) {
-                try? fm.removeItem(at: $0)
+        [localIPA, localP12, localProv].forEach { dest in
+            if fm.fileExists(atPath: dest.path) {
+                try? fm.removeItem(at: dest)
             }
         }
 
         try fm.copyItem(at: ipaURL, to: localIPA)
         try fm.copyItem(at: p12URL, to: localP12)
         try fm.copyItem(at: provURL, to: localProv)
-
         return (localIPA, localP12, localProv)
     }
 
-    static func extractIPA(ipaURL: URL, to workDir: URL) throws {
+    static func extractIPA(
+        ipaURL: URL,
+        to workDir: URL,
+        progressUpdate: @escaping (String) -> Void
+    ) throws {
         let archive = try Archive(url: ipaURL, accessMode: .read)
-
         let fm = FileManager.default
+
+        let progress = Progress(totalUnitCount: Int64(archive.count))
+        let observation = progress.observe(\.fractionCompleted) { prog, _ in
+            let pct = Int(prog.fractionCompleted * 100)
+            progressUpdate("Unzipping IPA 🔓 (\(pct)%)")
+        }
+
+        var current = 0
         for entry in archive {
             let dest = workDir.appendingPathComponent(entry.path)
             try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -131,7 +147,11 @@ fileprivate class SigningManager {
             } else {
                 _ = try archive.extract(entry, to: dest)
             }
+            current += 1
+            progress.completedUnitCount = Int64(current)
         }
+
+        observation.invalidate()
     }
 
     static func findAppBundle(in payloadDir: URL) throws -> URL {
@@ -139,51 +159,70 @@ fileprivate class SigningManager {
         guard fm.fileExists(atPath: payloadDir.path) else {
             throw NSError(domain: "ProStoreTools", code: 1, userInfo: [NSLocalizedDescriptionKey: "Payload not found"])
         }
-
         let contents = try fm.contentsOfDirectory(atPath: payloadDir.path)
         guard let appName = contents.first(where: { $0.hasSuffix(".app") }) else {
             throw NSError(domain: "ProStoreTools", code: 2, userInfo: [NSLocalizedDescriptionKey: "No .app bundle in Payload"])
         }
-
         return payloadDir.appendingPathComponent(appName)
     }
 
-    static func createSignedIPA(from workDir: URL, originalIPAURL: URL, outputDir: URL) throws -> URL {
+    static func createSignedIPA(
+        from workDir: URL,
+        originalIPAURL: URL,
+        outputDir: URL,
+        progressUpdate: @escaping (String) -> Void
+    ) throws -> URL {
         let fm = FileManager.default
-
         let originalBase = originalIPAURL.deletingPathExtension().lastPathComponent
         let finalFileName = "\(originalBase)_signed_\(UUID().uuidString).ipa"
         let signedIpa = outputDir.appendingPathComponent(finalFileName)
-
         let writeArchive = try Archive(url: signedIpa, accessMode: .create)
 
+        // Build file list (only files, no dirs — we'll add dirs separately)
         let enumerator = fm.enumerator(at: workDir, includingPropertiesForKeys: [.isDirectoryKey], options: [], errorHandler: nil)!
         var directories: [URL] = []
         var filesList: [URL] = []
-
         for case let file as URL in enumerator {
             if file == workDir { continue }
             let isDir = (try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? file.hasDirectoryPath
-            if isDir { directories.append(file) } else { filesList.append(file) }
+            if isDir {
+                directories.append(file)
+            } else {
+                filesList.append(file)
+            }
         }
 
+        // Add directories first (no compression)
         directories.sort { $0.path.count < $1.path.count }
-        let base = workDir
-
         for dir in directories {
-            let relative = dir.path.replacingOccurrences(of: base.path + "/", with: "")
+            let relative = dir.path.replacingOccurrences(of: workDir.path + "/", with: "")
             let entryPath = relative.hasSuffix("/") ? relative : relative + "/"
-            try writeArchive.addEntry(with: entryPath, relativeTo: base, compressionMethod: .none)
+            try writeArchive.addEntry(with: entryPath, relativeTo: workDir, compressionMethod: .none)
         }
 
+        // Now add files with progress
+        let progress = Progress(totalUnitCount: Int64(filesList.count))
+        let observation = progress.observe(\.fractionCompleted) { prog, _ in
+            let pct = Int(prog.fractionCompleted * 100)
+            progressUpdate("Zipping signed IPA 📦 (\(pct)%)")
+        }
+
+        var completed = 0
         for file in filesList {
-            let relative = file.path.replacingOccurrences(of: base.path + "/", with: "")
-            try writeArchive.addEntry(with: relative, relativeTo: base, compressionMethod: .deflate)
+            let relative = file.path.replacingOccurrences(of: workDir.path + "/", with: "")
+            try writeArchive.addEntry(with: relative, relativeTo: workDir, compressionMethod: .deflate)
+            completed += 1
+            progress.completedUnitCount = Int64(completed)
         }
 
+        observation.invalidate()
+
+        // Copy to Documents for sharing
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let outURL = docs.appendingPathComponent(finalFileName)
-        if fm.fileExists(atPath: outURL.path) { try fm.removeItem(at: outURL) }
+        if fm.fileExists(atPath: outURL.path) {
+            try fm.removeItem(at: outURL)
+        }
         try fm.copyItem(at: signedIpa, to: outURL)
 
         return outURL
