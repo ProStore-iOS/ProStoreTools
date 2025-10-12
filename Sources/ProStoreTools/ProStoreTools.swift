@@ -129,29 +129,16 @@ fileprivate class SigningManager {
         to workDir: URL,
         progressUpdate: @escaping (String) -> Void
     ) throws {
-        let archive = try Archive(url: ipaURL, accessMode: .read)
         let fm = FileManager.default
-
-        let progress = Progress(totalUnitCount: Int64(archive.count))
-        let observation = progress.observe(\.fractionCompleted) { prog, _ in
+        let progress = Progress()
+        let observation = progress.observe(\Progress.fractionCompleted) { prog, _ in
             let pct = Int(prog.fractionCompleted * 100)
             progressUpdate("Unzipping IPA 🔓 (\(pct)%)")
         }
-
-        var current = 0
-        for entry in archive {
-            let dest = workDir.appendingPathComponent(entry.path)
-            try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-            if entry.type == .directory {
-                try fm.createDirectory(at: dest, withIntermediateDirectories: true)
-            } else {
-                _ = try archive.extract(entry, to: dest)
-            }
-            current += 1
-            progress.completedUnitCount = Int64(current)
+        defer {
+            observation.invalidate()
         }
-
-        observation.invalidate()
+        try fm.unzipItem(at: ipaURL, to: workDir, progress: progress)
     }
 
     static func findAppBundle(in payloadDir: URL) throws -> URL {
@@ -176,46 +163,17 @@ fileprivate class SigningManager {
         let originalBase = originalIPAURL.deletingPathExtension().lastPathComponent
         let finalFileName = "\(originalBase)_signed_\(UUID().uuidString).ipa"
         let signedIpa = outputDir.appendingPathComponent(finalFileName)
-        let writeArchive = try Archive(url: signedIpa, accessMode: .create)
 
-        // Build file list (only files, no dirs — we'll add dirs separately)
-        let enumerator = fm.enumerator(at: workDir, includingPropertiesForKeys: [.isDirectoryKey], options: [], errorHandler: nil)!
-        var directories: [URL] = []
-        var filesList: [URL] = []
-        for case let file as URL in enumerator {
-            if file == workDir { continue }
-            let isDir = (try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? file.hasDirectoryPath
-            if isDir {
-                directories.append(file)
-            } else {
-                filesList.append(file)
-            }
-        }
-
-        // Add directories first (no compression)
-        directories.sort { $0.path.count < $1.path.count }
-        for dir in directories {
-            let relative = dir.path.replacingOccurrences(of: workDir.path + "/", with: "")
-            let entryPath = relative.hasSuffix("/") ? relative : relative + "/"
-            try writeArchive.addEntry(with: entryPath, relativeTo: workDir, compressionMethod: .none)
-        }
-
-        // Now add files with progress
-        let progress = Progress(totalUnitCount: Int64(filesList.count))
-        let observation = progress.observe(\.fractionCompleted) { prog, _ in
+        let progress = Progress()
+        let observation = progress.observe(\Progress.fractionCompleted) { prog, _ in
             let pct = Int(prog.fractionCompleted * 100)
             progressUpdate("Zipping signed IPA 📦 (\(pct)%)")
         }
-
-        var completed = 0
-        for file in filesList {
-            let relative = file.path.replacingOccurrences(of: workDir.path + "/", with: "")
-            try writeArchive.addEntry(with: relative, relativeTo: workDir, compressionMethod: .deflate)
-            completed += 1
-            progress.completedUnitCount = Int64(completed)
+        defer {
+            observation.invalidate()
         }
 
-        observation.invalidate()
+        try fm.zipItem(at: workDir, to: signedIpa, shouldKeepParent: false, progress: progress)
 
         // Copy to Documents for sharing
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
