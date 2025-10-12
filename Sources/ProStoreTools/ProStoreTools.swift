@@ -20,6 +20,20 @@ public enum ProStoreTools {
             completion: completion
         )
     }
+    
+    public static func checkRevokage(
+        p12URL: URL,
+        provURL: URL,
+        p12Password: String,
+        completion: @escaping (Int32, Date?, String?) -> Void
+    ) {
+        SigningManager.checkRevokage(
+            p12URL: p12URL,
+            provURL: provURL,
+            p12Password: p12Password,
+            completion: completion
+        )
+    }
 }
 
 fileprivate class SigningManager {
@@ -38,24 +52,19 @@ fileprivate class SigningManager {
                 defer {
                     cleanupTemporaryFiles(at: tmpRoot)
                 }
-
                 let (localIPA, localP12, localProv) = try copyInputFiles(
                     ipaURL: ipaURL,
                     p12URL: p12URL,
                     provURL: provURL,
                     to: inputsDir
                 )
-
                 progressUpdate("Unzipping IPA 🔓")
                 try extractIPA(ipaURL: localIPA, to: workDir, progressUpdate: progressUpdate)
-
                 let payloadDir = workDir.appendingPathComponent("Payload")
                 let appDir = try findAppBundle(in: payloadDir)
-
                 progressUpdate("Signing \(appDir.lastPathComponent) ✍️")
                 let sema = DispatchSemaphore(value: 0)
                 var signingError: Error?
-
                 // Use the ZsignSwift API
                 _ = Zsign.sign(
                     appPath: appDir.path,
@@ -69,11 +78,9 @@ fileprivate class SigningManager {
                     sema.signal()
                 }
                 sema.wait()
-
                 if let error = signingError {
                     throw error
                 }
-
                 progressUpdate("Zipping signed IPA 📦")
                 let signedIPAURL = try createSignedIPA(
                     from: workDir,
@@ -81,16 +88,28 @@ fileprivate class SigningManager {
                     outputDir: tmpRoot,
                     progressUpdate: progressUpdate
                 )
-
                 completion(.success(signedIPAURL))
             } catch {
                 completion(.failure(error))
             }
         }
     }
-
+    
+    static func checkRevokage(
+        p12URL: URL,
+        provURL: URL,
+        p12Password: String,
+        completion: @escaping (Int32, Date?, String?) -> Void
+    ) {
+        Zsign.checkRevokage(
+            provisionPath: provURL.path,
+            p12Path: p12URL.path,
+            p12Password: p12Password,
+            completionHandler: completion
+        )
+    }
+    
     // MARK: - workspace helpers
-
     static func prepareTemporaryWorkspace() throws -> (URL, URL, URL) {
         let fm = FileManager.default
         let tmpRoot = fm.temporaryDirectory.appendingPathComponent("zsign_ios_\(UUID().uuidString)")
@@ -100,7 +119,7 @@ fileprivate class SigningManager {
         try fm.createDirectory(at: work, withIntermediateDirectories: true)
         return (tmpRoot, inputs, work)
     }
-
+    
     static func copyInputFiles(
         ipaURL: URL,
         p12URL: URL,
@@ -111,19 +130,17 @@ fileprivate class SigningManager {
         let localIPA = inputsDir.appendingPathComponent(ipaURL.lastPathComponent)
         let localP12 = inputsDir.appendingPathComponent(p12URL.lastPathComponent)
         let localProv = inputsDir.appendingPathComponent(provURL.lastPathComponent)
-
         [localIPA, localP12, localProv].forEach { dest in
             if fm.fileExists(atPath: dest.path) {
                 try? fm.removeItem(at: dest)
             }
         }
-
         try fm.copyItem(at: ipaURL, to: localIPA)
         try fm.copyItem(at: p12URL, to: localP12)
         try fm.copyItem(at: provURL, to: localProv)
         return (localIPA, localP12, localProv)
     }
-
+    
     static func extractIPA(
         ipaURL: URL,
         to workDir: URL,
@@ -140,7 +157,7 @@ fileprivate class SigningManager {
         }
         try fm.unzipItem(at: ipaURL, to: workDir, progress: progress)
     }
-
+    
     static func findAppBundle(in payloadDir: URL) throws -> URL {
         let fm = FileManager.default
         guard fm.fileExists(atPath: payloadDir.path) else {
@@ -152,7 +169,7 @@ fileprivate class SigningManager {
         }
         return payloadDir.appendingPathComponent(appName)
     }
-
+    
     static func createSignedIPA(
         from workDir: URL,
         originalIPAURL: URL,
@@ -163,7 +180,6 @@ fileprivate class SigningManager {
         let originalBase = originalIPAURL.deletingPathExtension().lastPathComponent
         let finalFileName = "\(originalBase)_signed_\(UUID().uuidString).ipa"
         let signedIpa = outputDir.appendingPathComponent(finalFileName)
-
         let progress = Progress()
         let observation = progress.observe(\Progress.fractionCompleted) { prog, _ in
             let pct = Int(prog.fractionCompleted * 100)
@@ -172,9 +188,7 @@ fileprivate class SigningManager {
         defer {
             observation.invalidate()
         }
-
         try fm.zipItem(at: workDir, to: signedIpa, shouldKeepParent: false, progress: progress)
-
         // Copy to Documents for sharing
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let outURL = docs.appendingPathComponent(finalFileName)
@@ -182,10 +196,9 @@ fileprivate class SigningManager {
             try fm.removeItem(at: outURL)
         }
         try fm.copyItem(at: signedIpa, to: outURL)
-
         return outURL
     }
-
+    
     static func cleanupTemporaryFiles(at url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
