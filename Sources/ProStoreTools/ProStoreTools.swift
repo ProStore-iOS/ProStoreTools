@@ -1,7 +1,7 @@
 import Foundation
 import ZIPFoundation
 import ZsignSwift
-
+ 
 public enum ProStoreTools {
     public static func sign(
         ipaURL: URL,
@@ -20,22 +20,8 @@ public enum ProStoreTools {
             completion: completion
         )
     }
-    
-    public static func checkRevokage(
-        p12URL: URL,
-        provURL: URL,
-        p12Password: String,
-        completion: @escaping (Int32, Date?, String?) -> Void
-    ) {
-        SigningManager.checkRevokage(
-            p12URL: p12URL,
-            provURL: provURL,
-            p12Password: p12Password,
-            completion: completion
-        )
-    }
 }
-
+ 
 fileprivate class SigningManager {
     static func sign(
         ipaURL: URL,
@@ -94,21 +80,7 @@ fileprivate class SigningManager {
             }
         }
     }
-    
-    static func checkRevokage(
-        p12URL: URL,
-        provURL: URL,
-        p12Password: String,
-        completion: @escaping (Int32, Date?, String?) -> Void
-    ) {
-        Zsign.checkRevokage(
-            provisionPath: provURL.path,
-            p12Path: p12URL.path,
-            p12Password: p12Password,
-            completionHandler: completion
-        )
-    }
-    
+   
     // MARK: - workspace helpers
     static func prepareTemporaryWorkspace() throws -> (URL, URL, URL) {
         let fm = FileManager.default
@@ -119,7 +91,7 @@ fileprivate class SigningManager {
         try fm.createDirectory(at: work, withIntermediateDirectories: true)
         return (tmpRoot, inputs, work)
     }
-    
+   
     static func copyInputFiles(
         ipaURL: URL,
         p12URL: URL,
@@ -140,7 +112,7 @@ fileprivate class SigningManager {
         try fm.copyItem(at: provURL, to: localProv)
         return (localIPA, localP12, localProv)
     }
-    
+   
     static func extractIPA(
         ipaURL: URL,
         to workDir: URL,
@@ -157,7 +129,7 @@ fileprivate class SigningManager {
         }
         try fm.unzipItem(at: ipaURL, to: workDir, progress: progress)
     }
-    
+   
     static func findAppBundle(in payloadDir: URL) throws -> URL {
         let fm = FileManager.default
         guard fm.fileExists(atPath: payloadDir.path) else {
@@ -169,7 +141,7 @@ fileprivate class SigningManager {
         }
         return payloadDir.appendingPathComponent(appName)
     }
-    
+   
     static func createSignedIPA(
         from workDir: URL,
         originalIPAURL: URL,
@@ -198,7 +170,7 @@ fileprivate class SigningManager {
         try fm.copyItem(at: signedIpa, to: outURL)
         return outURL
     }
-    
+   
     static func cleanupTemporaryFiles(at url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
