@@ -20,6 +20,29 @@ public enum ProStoreTools {
             completion: completion
         )
     }
+    
+    public static func getExpirationDate(provURL: URL) -> Date? {
+        guard let data = try? Data(contentsOf: provURL) else { return nil }
+        
+        let startTag = Data("<plist".utf8)
+        let endTag = Data("</plist>".utf8)
+        
+        guard let startRange = data.range(of: startTag),
+              let endRange = data.range(of: endTag) else {
+            return nil
+        }
+        
+        let plistDataSlice = data[startRange.lowerBound..<endRange.upperBound]
+        let plistData = Data(plistDataSlice)
+        
+        guard let parsed = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil),
+              let dict = parsed as? [String: Any],
+              let expDate = dict["ExpirationDate"] as? Date else {
+            return nil
+        }
+        
+        return expDate
+    }
 }
  
 fileprivate class SigningManager {
