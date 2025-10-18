@@ -23,16 +23,19 @@ public enum ProStoreTools {
     
     public static func getExpirationDate(provURL: URL) -> Date? {
         guard let data = try? Data(contentsOf: provURL) else { return nil }
-        
+        return getExpirationDate(provData: data)
+    }
+    
+    public static func getExpirationDate(provData: Data) -> Date? {
         let startTag = Data("<plist".utf8)
         let endTag = Data("</plist>".utf8)
         
-        guard let startRange = data.range(of: startTag),
-              let endRange = data.range(of: endTag) else {
+        guard let startRange = provData.range(of: startTag),
+              let endRange = provData.range(of: endTag) else {
             return nil
         }
         
-        let plistDataSlice = data[startRange.lowerBound..<endRange.upperBound]
+        let plistDataSlice = provData[startRange.lowerBound..<endRange.upperBound]
         let plistData = Data(plistDataSlice)
         
         guard let parsed = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil),
