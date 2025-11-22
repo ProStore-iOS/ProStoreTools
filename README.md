@@ -1,4 +1,5 @@
 # ProStoreTools
+> ⚠️ ProStoreTools is now built into ProStore!
 
 A Swift Package with many tools for ProStore and ProSign.
 
